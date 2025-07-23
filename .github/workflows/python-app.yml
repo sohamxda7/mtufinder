@@ -2,7 +2,7 @@ name: Build & (maybe) Release
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main ]   # or '**' if you want every branch
     tags:     [ 'v*' ]
 
 jobs:
@@ -10,18 +10,20 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set nightly tag pieces
+      # Make SHORT_SHA / NIGHTLY_TAG for branch pushes
+      - name: Prep env vars
         shell: bash
         run: |
           echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
           echo "NIGHTLY_TAG=nightly-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      # (optional) changelog only on tag
+      # Changelog only when tagging
       - name: Generate changelog
         if: github.ref_type == 'tag'
         shell: bash
@@ -37,17 +39,19 @@ jobs:
           python-version: '3.12'
 
       - name: Install Nuitka
-        run: |
-          python -m pip install --upgrade nuitka ordered-set zstandard
+        run: python -m pip install --upgrade nuitka ordered-set zstandard
 
       - name: Build with Nuitka
+        shell: bash
         run: |
-          python -m nuitka --onefile --windows-disable-console --mingw64 ^
-            --windows-file-version=${{ github.ref_type == 'tag' && github.ref_name || '0.0.0' }} ^
-            --windows-product-version=${{ github.ref_type == 'tag' && github.ref_name || '0.0.0' }} ^
-            --windows-company-name="Soham Sen" ^
-            --windows-product-name="WireGuard MTU Finder" ^
-            --output-filename=MTU_Finder.exe ^
+          VER="0.0.0"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"; fi
+          python -m nuitka --onefile --windows-disable-console --mingw64 \
+            --windows-file-version="$VER" \
+            --windows-product-version="$VER" \
+            --windows-company-name="Soham Sen" \
+            --windows-product-name="WireGuard MTU Finder" \
+            --output-filename=MTU_Finder.exe \
             mtufinder.py
 
       - uses: actions/upload-artifact@v4
@@ -56,6 +60,7 @@ jobs:
           path: MTU_Finder.exe
           compression-level: 0
 
+      # Nightly prerelease on branch pushes (new tag every time)
       - name: Publish nightly prerelease
         if: github.ref_type == 'branch'
         uses: ncipollo/release-action@v1
@@ -66,6 +71,7 @@ jobs:
           allowUpdates: false
           artifacts: MTU_Finder.exe
 
+      # Proper release on tag pushes
       - name: Publish tagged release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
