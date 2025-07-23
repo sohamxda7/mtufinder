@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # WireGuard MTU Finder (Windows only)
-# Copyright (C) 2025 Soham Sen <sohamsen2000@outlook.com>
+# Copyright (C) 2025
+#   Soham Sen <sohamsen2000@outlook.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -24,6 +25,10 @@ import threading
 import socket
 import tkinter as tk
 from tkinter import ttk, messagebox
+
+# ---------- Meta ----------
+VERSION = "1.0"
+AUTHOR  = "Soham Sen"
 
 # ---------- Config ----------
 DEFAULT_HOST = "1.1.1.1"
@@ -59,7 +64,7 @@ def is_windows():
     return platform.system().lower() == "windows"
 
 def resolve_ipv4(host: str) -> str:
-    """Return first IPv4 for host, or original if already IPv4."""
+    """Return first IPv4 for host, or the original if already IPv4."""
     try:
         socket.inet_aton(host)  # already IPv4
         return host
@@ -71,7 +76,7 @@ def resolve_ipv4(host: str) -> str:
             return infos[0][4][0]
     except socket.gaierror:
         pass
-    return host  # let ping fail, we'll catch it
+    return host  # let ping fail; we'll catch it
 
 def ping_ok(host: str, size: int) -> bool:
     # Force IPv4 (-4) so DF works
@@ -164,7 +169,14 @@ class MTUApp(tk.Tk):
         ttk.Separator(frm, orient="horizontal").grid(row=5, column=0, columnspan=3, sticky="ew", pady=(5,5))
 
         ttk.Label(frm, textvariable=self.status_var, foreground="#555").grid(
-            row=6, column=0, columnspan=3, sticky="w", padx=10, pady=(0,10)
+            row=6, column=0, columnspan=3, sticky="w", padx=10, pady=(0,5)
+        )
+
+        ttk.Separator(frm, orient="horizontal").grid(row=7, column=0, columnspan=3, sticky="ew", pady=(0,3))
+
+        footer = f"Version {VERSION}  ·  {AUTHOR}"
+        ttk.Label(frm, text=footer, foreground="#666").grid(
+            row=8, column=0, columnspan=3, sticky="e", padx=10, pady=(0,8)
         )
 
     def _populate_interface_mtu(self):
