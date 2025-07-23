@@ -2,7 +2,7 @@ name: Build & (maybe) Release
 
 on:
   push:
-    branches: [ main ]   # or '**' if you want every branch
+    branches: [ main ]
     tags:     [ 'v*' ]
 
 jobs:
@@ -16,15 +16,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Make SHORT_SHA / NIGHTLY_TAG for branch pushes
       - name: Prep env vars
         shell: bash
         run: |
           echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
           echo "NIGHTLY_TAG=nightly-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> $GITHUB_ENV
 
-      # Changelog only when tagging
-      - name: Generate changelog
+      - name: Generate changelog (only on tag)
         if: github.ref_type == 'tag'
         shell: bash
         run: |
@@ -43,10 +41,18 @@ jobs:
 
       - name: Build with Nuitka
         shell: bash
+        env:
+          NUITKA_ASSUME_YES_FOR_DOWNLOADS: "1"
         run: |
           VER="0.0.0"
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"; fi
-          python -m nuitka --onefile --windows-disable-console --mingw64 \
+
+          python -m nuitka \
+            --onefile \
+            --windows-console-mode=disable \
+            --mingw64 \
+            --assume-yes-for-downloads \
+            --enable-plugin=tk-inter \
             --windows-file-version="$VER" \
             --windows-product-version="$VER" \
             --windows-company-name="Soham Sen" \
@@ -60,8 +66,7 @@ jobs:
           path: MTU_Finder.exe
           compression-level: 0
 
-      # Nightly prerelease on branch pushes (new tag every time)
-      - name: Publish nightly prerelease
+      - name: Publish nightly prerelease (unique tag each push)
         if: github.ref_type == 'branch'
         uses: ncipollo/release-action@v1
         with:
@@ -71,7 +76,6 @@ jobs:
           allowUpdates: false
           artifacts: MTU_Finder.exe
 
-      # Proper release on tag pushes
       - name: Publish tagged release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
