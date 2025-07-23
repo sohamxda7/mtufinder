@@ -28,13 +28,30 @@ from tkinter import ttk, messagebox
 DEFAULT_HOST = "1.1.1.1"
 WG_HEADROOM  = 80          # subtract for WG/OpenVPN/UDP overhead
 PING_TRIES   = 2
-TIMEOUT_MS   = 1500
+TIMEOUT_MS   = 1500        # ms
 
 FRAG_PATTERNS = [
     "Packet needs to be fragmented",
     "fragmentation needed",
 ]
 SUCCESS_PATTERN = re.compile(r"TTL=\d+", re.I)
+
+# ---------- Subprocess console hiding (Windows) ----------
+CREATE_NO_WINDOW = 0x08000000
+STARTUPINFO = subprocess.STARTUPINFO()
+STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+def _check_output_silent(args):
+    """Run subprocess.check_output without flashing a console window."""
+    return subprocess.check_output(
+        args,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="ignore",
+        startupinfo=STARTUPINFO,
+        creationflags=CREATE_NO_WINDOW
+    )
 
 # ---------- Helpers ----------
 def is_windows():
@@ -43,7 +60,7 @@ def is_windows():
 def ping_ok(host: str, size: int) -> bool:
     args = ["ping", "-f", "-l", str(size), "-n", "1", "-w", str(TIMEOUT_MS), host]
     try:
-        out = subprocess.check_output(args, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="ignore")
+        out = _check_output_silent(args)
     except subprocess.CalledProcessError as e:
         out = e.output
 
@@ -52,7 +69,7 @@ def ping_ok(host: str, size: int) -> bool:
     return bool(SUCCESS_PATTERN.search(out))
 
 def find_path_mtu(host: str) -> int:
-    # payload sizes (IP+ICMP header is ~28 bytes)
+    # payload sizes (IP+ICMP header ~28 bytes)
     low, high = 0, 1472
     best = 0
     while low <= high:
@@ -67,9 +84,8 @@ def find_path_mtu(host: str) -> int:
 
 def get_default_interface_mtu() -> int | None:
     try:
-        out = subprocess.check_output(
-            ["netsh", "interface", "ipv4", "show", "subinterfaces"],
-            stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="ignore"
+        out = _check_output_silent(
+            ["netsh", "interface", "ipv4", "show", "subinterfaces"]
         )
     except Exception:
         return None
