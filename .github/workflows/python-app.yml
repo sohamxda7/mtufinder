@@ -1,39 +1,44 @@
-name: Build & Release
+name: Build & (maybe) Release
 
 on:
   push:
-    tags:
-      - 'v*'        # trigger when you push tags like v1.0.0
+    branches: [ main ]
+    tags:     [ 'v*' ]
 
 jobs:
-  build_release:
+  build:
     runs-on: windows-latest
     permissions:
-      contents: write   # needed to create/edit releases
+      contents: write   # for release step later
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # need full history for changelog
+          fetch-depth: 0   # need history for changelog when tagging
 
+      # Only used if we’re on a tag
       - name: Get version from tag
         id: ver
         shell: bash
-        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Generate changelog since previous tag
-        id: changelog
+      - name: Generate changelog (only on tag)
+        if: github.ref_type == 'tag'
         shell: bash
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" --always $(git rev-list --tags --skip=1 --max-count=1))
-          if [ -z "$PREV_TAG" ]; then PREV_TAG=$(git rev-list --max-parents=0 HEAD); fi
+          set -e
+          CUR_TAG="${GITHUB_REF_NAME}"
+          # previous tag or first commit
+          PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" "${CUR_TAG}^" 2>/dev/null || true)
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+            echo "No previous tag, using first commit $PREV_TAG"
+          fi
           echo "Changes since $PREV_TAG:" > CHANGELOG.md
-          git log --pretty=format:"- %s (%h)" $PREV_TAG..HEAD >> CHANGELOG.md
-          {
-            echo "body<<'EOF'"
-            cat CHANGELOG.md
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+          git log --pretty=format:"- %s (%h)" $PREV_TAG..$CUR_TAG >> CHANGELOG.md
 
       - uses: actions/setup-python@v5
         with:
@@ -48,16 +53,17 @@ jobs:
         run: |
           pyinstaller --onefile --noconsole --name MTU_Finder mtufinder.py
 
-      - name: Upload artifact (optional)
+      - name: Upload artifact (for every push)
         uses: actions/upload-artifact@v4
         with:
           name: MTU_Finder.exe
           path: dist/MTU_Finder.exe
 
-      - name: Create/Update GitHub Release
+      - name: Create/Update GitHub Release (only on tag)
+        if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
-          body: ${{ steps.changelog.outputs.body }}
+          body_path: CHANGELOG.md
           files: dist/MTU_Finder.exe
