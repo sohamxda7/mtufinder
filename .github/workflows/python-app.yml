@@ -10,21 +10,22 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
-    env:
-      # Unique tag per push to main
-      NIGHTLY_TAG: nightly-${{ github.run_number }}-${{ github.sha.substr(0,7) }}
-
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Only for tagged releases
+      - name: Set nightly tag pieces
+        shell: bash
+        run: |
+          echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+          echo "NIGHTLY_TAG=nightly-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> $GITHUB_ENV
+
+      # (optional) changelog only on tag
       - name: Generate changelog
         if: github.ref_type == 'tag'
         shell: bash
         run: |
-          set -e
           CUR_TAG="${GITHUB_REF_NAME}"
           PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" "${CUR_TAG}^" 2>/dev/null || true)
           if [ -z "$PREV_TAG" ]; then PREV_TAG=$(git rev-list --max-parents=0 HEAD); fi
@@ -49,14 +50,12 @@ jobs:
             --output-filename=MTU_Finder.exe ^
             mtufinder.py
 
-      # Optional artifact (GH zips it)
       - uses: actions/upload-artifact@v4
         with:
           name: MTU_Finder.exe
           path: MTU_Finder.exe
           compression-level: 0
 
-      # Nightly prerelease: NEW tag each push to main
       - name: Publish nightly prerelease
         if: github.ref_type == 'branch'
         uses: ncipollo/release-action@v1
@@ -64,11 +63,9 @@ jobs:
           tag: ${{ env.NIGHTLY_TAG }}
           name: ${{ env.NIGHTLY_TAG }}
           prerelease: true
-          draft: false
-          allowUpdates: false         # <- force new release
+          allowUpdates: false
           artifacts: MTU_Finder.exe
 
-      # Proper tagged release
       - name: Publish tagged release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
