@@ -9,33 +9,22 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write   # for release step later
-
+      contents: write   # needed to create/update releases
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # need history for changelog when tagging
+          fetch-depth: 0
 
-      # Only used if we’re on a tag
-      - name: Get version from tag
-        id: ver
-        shell: bash
-        run: |
-          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
-          fi
-
+      # Only needed for changelog when tagging
       - name: Generate changelog (only on tag)
         if: github.ref_type == 'tag'
         shell: bash
         run: |
           set -e
           CUR_TAG="${GITHUB_REF_NAME}"
-          # previous tag or first commit
           PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" "${CUR_TAG}^" 2>/dev/null || true)
           if [ -z "$PREV_TAG" ]; then
             PREV_TAG=$(git rev-list --max-parents=0 HEAD)
-            echo "No previous tag, using first commit $PREV_TAG"
           fi
           echo "Changes since $PREV_TAG:" > CHANGELOG.md
           git log --pretty=format:"- %s (%h)" $PREV_TAG..$CUR_TAG >> CHANGELOG.md
@@ -53,13 +42,28 @@ jobs:
         run: |
           pyinstaller --onefile --noconsole --name MTU_Finder mtufinder.py
 
-      - name: Upload artifact (for every push)
+      # Optional zipped artifact (remove if you don't care)
+      - name: Upload artifact (zipped by GH)
         uses: actions/upload-artifact@v4
         with:
           name: MTU_Finder.exe
           path: dist/MTU_Finder.exe
+          compression-level: 0   # still zip format, just no compression
 
-      - name: Create/Update GitHub Release (only on tag)
+      # Upload raw exe to a prerelease called "nightly" on every branch push
+      - name: Upload to nightly prerelease (branch push)
+        if: github.ref_type == 'branch'
+        uses: ncipollo/release-action@v1
+        with:
+          tag: nightly
+          name: Nightly
+          prerelease: true
+          allowUpdates: true
+          replacesArtifacts: true
+          artifacts: dist/MTU_Finder.exe
+
+      # Upload raw exe to a proper release on tag push
+      - name: Publish tagged release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
