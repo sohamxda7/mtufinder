@@ -9,23 +9,25 @@ jobs:
   build:
     runs-on: windows-latest
     permissions:
-      contents: write   # needed to create/update releases
+      contents: write
+    env:
+      # Unique tag per push to main
+      NIGHTLY_TAG: nightly-${{ github.run_number }}-${{ github.sha.substr(0,7) }}
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Only needed for changelog when tagging
-      - name: Generate changelog (only on tag)
+      # Only for tagged releases
+      - name: Generate changelog
         if: github.ref_type == 'tag'
         shell: bash
         run: |
           set -e
           CUR_TAG="${GITHUB_REF_NAME}"
           PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" "${CUR_TAG}^" 2>/dev/null || true)
-          if [ -z "$PREV_TAG" ]; then
-            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
-          fi
+          if [ -z "$PREV_TAG" ]; then PREV_TAG=$(git rev-list --max-parents=0 HEAD); fi
           echo "Changes since $PREV_TAG:" > CHANGELOG.md
           git log --pretty=format:"- %s (%h)" $PREV_TAG..$CUR_TAG >> CHANGELOG.md
 
@@ -33,36 +35,40 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install deps
+      - name: Install Nuitka
         run: |
-          python -m pip install --upgrade pip
-          pip install pyinstaller
+          python -m pip install --upgrade nuitka ordered-set zstandard
 
-      - name: Build EXE
+      - name: Build with Nuitka
         run: |
-          pyinstaller --onefile --noconsole --name MTU_Finder mtufinder.py
+          python -m nuitka --onefile --windows-disable-console --mingw64 ^
+            --windows-file-version=${{ github.ref_type == 'tag' && github.ref_name || '0.0.0' }} ^
+            --windows-product-version=${{ github.ref_type == 'tag' && github.ref_name || '0.0.0' }} ^
+            --windows-company-name="Soham Sen" ^
+            --windows-product-name="WireGuard MTU Finder" ^
+            --output-filename=MTU_Finder.exe ^
+            mtufinder.py
 
-      # Optional zipped artifact (remove if you don't care)
-      - name: Upload artifact (zipped by GH)
-        uses: actions/upload-artifact@v4
+      # Optional artifact (GH zips it)
+      - uses: actions/upload-artifact@v4
         with:
           name: MTU_Finder.exe
-          path: dist/MTU_Finder.exe
-          compression-level: 0   # still zip format, just no compression
+          path: MTU_Finder.exe
+          compression-level: 0
 
-      # Upload raw exe to a prerelease called "nightly" on every branch push
-      - name: Upload to nightly prerelease (branch push)
+      # Nightly prerelease: NEW tag each push to main
+      - name: Publish nightly prerelease
         if: github.ref_type == 'branch'
         uses: ncipollo/release-action@v1
         with:
-          tag: nightly
-          name: Nightly
+          tag: ${{ env.NIGHTLY_TAG }}
+          name: ${{ env.NIGHTLY_TAG }}
           prerelease: true
-          allowUpdates: true
-          replacesArtifacts: true
-          artifacts: dist/MTU_Finder.exe
+          draft: false
+          allowUpdates: false         # <- force new release
+          artifacts: MTU_Finder.exe
 
-      # Upload raw exe to a proper release on tag push
+      # Proper tagged release
       - name: Publish tagged release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
@@ -70,4 +76,4 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body_path: CHANGELOG.md
-          files: dist/MTU_Finder.exe
+          files: MTU_Finder.exe
