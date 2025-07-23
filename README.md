@@ -1,6 +1,6 @@
 # MTU Finder for WireGuard (Windows)
 
-Small Tk GUI tool to discover your path MTU (via DF `ping`) and suggest a WireGuard‑friendly MTU.
+Small Tk GUI tool to discover your path MTU and suggest a WireGuard‑friendly MTU.
 
 ## What it does
 - Pings a host with DF flag and binary‑searches the largest size that doesn’t fragment.
