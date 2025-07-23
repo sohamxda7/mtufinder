@@ -21,14 +21,15 @@ import platform
 import subprocess
 import re
 import threading
+import socket
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 # ---------- Config ----------
 DEFAULT_HOST = "1.1.1.1"
-WG_HEADROOM  = 80          # subtract for WG/OpenVPN/UDP overhead
+WG_HEADROOM  = 80           # subtract for WG/OpenVPN/UDP overhead
 PING_TRIES   = 2
-TIMEOUT_MS   = 1500        # ms
+TIMEOUT_MS   = 1500         # ms
 
 FRAG_PATTERNS = [
     "Packet needs to be fragmented",
@@ -57,8 +58,24 @@ def _check_output_silent(args):
 def is_windows():
     return platform.system().lower() == "windows"
 
+def resolve_ipv4(host: str) -> str:
+    """Return first IPv4 for host, or original if already IPv4."""
+    try:
+        socket.inet_aton(host)  # already IPv4
+        return host
+    except OSError:
+        pass
+    try:
+        infos = socket.getaddrinfo(host, None, socket.AF_INET)
+        if infos:
+            return infos[0][4][0]
+    except socket.gaierror:
+        pass
+    return host  # let ping fail, we'll catch it
+
 def ping_ok(host: str, size: int) -> bool:
-    args = ["ping", "-f", "-l", str(size), "-n", "1", "-w", str(TIMEOUT_MS), host]
+    # Force IPv4 (-4) so DF works
+    args = ["ping", "-4", "-f", "-l", str(size), "-n", "1", "-w", str(TIMEOUT_MS), host]
     try:
         out = _check_output_silent(args)
     except subprocess.CalledProcessError as e:
@@ -159,16 +176,19 @@ class MTUApp(tk.Tk):
         if not is_windows():
             messagebox.showerror("Nope", "This tool is Windows-only.")
             return
-        host = self.host_var.get().strip()
-        if not host:
+
+        host_in = self.host_var.get().strip()
+        if not host_in:
             messagebox.showwarning("Host?", "Enter a host/IP to ping.")
             return
+
+        resolved = resolve_ipv4(host_in)
 
         self.status_var.set("Measuring…")
         self.path_mtu_var.set("-")
         self.vpn_mtu_var.set("-")
 
-        threading.Thread(target=self._measure_thread, args=(host,), daemon=True).start()
+        threading.Thread(target=self._measure_thread, args=(resolved,), daemon=True).start()
 
     def _measure_thread(self, host):
         try:
