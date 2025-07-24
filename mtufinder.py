@@ -42,26 +42,18 @@ FRAG_PATTERNS = [
 ]
 SUCCESS_PATTERN = re.compile(r"TTL=\d+", re.I)
 
-# ---------- Subprocess console hiding (Windows) ----------
-if platform.system().lower() == "windows":
-    CREATE_NO_WINDOW = 0x08000000
-    STARTUPINFO = subprocess.STARTUPINFO()
-    STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-else:
-    CREATE_NO_WINDOW = 0
-    STARTUPINFO = None
+# ---------- Subprocess helper ----------
 
 def _check_output_silent(args):
-    """Run subprocess.check_output without flashing a console window."""
-    return subprocess.check_output(
+    """Run subprocess and capture output."""
+    return subprocess.run(
         args,
+        stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         encoding="utf-8",
-        errors="ignore",
-        startupinfo=STARTUPINFO,
-        creationflags=CREATE_NO_WINDOW
-    )
+        errors="ignore"
+    ).stdout
 
 # ---------- Helpers ----------
 def is_windows():
