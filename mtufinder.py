@@ -43,9 +43,13 @@ FRAG_PATTERNS = [
 SUCCESS_PATTERN = re.compile(r"TTL=\d+", re.I)
 
 # ---------- Subprocess console hiding (Windows) ----------
-CREATE_NO_WINDOW = 0x08000000
-STARTUPINFO = subprocess.STARTUPINFO()
-STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+if platform.system().lower() == "windows":
+    CREATE_NO_WINDOW = 0x08000000
+    STARTUPINFO = subprocess.STARTUPINFO()
+    STARTUPINFO.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+else:
+    CREATE_NO_WINDOW = 0
+    STARTUPINFO = None
 
 def _check_output_silent(args):
     """Run subprocess.check_output without flashing a console window."""
@@ -206,12 +210,18 @@ class MTUApp(tk.Tk):
         try:
             path_mtu = find_path_mtu(host)
             vpn_mtu = max(path_mtu - WG_HEADROOM, 576)
-            self.path_mtu_var.set(str(path_mtu))
-            self.vpn_mtu_var.set(str(vpn_mtu))
-            self.status_var.set("Done.")
+            self.after(0, self._update_results, path_mtu, vpn_mtu)
         except Exception as e:
-            self.status_var.set("Error.")
-            messagebox.showerror("Error", str(e))
+            self.after(0, self._show_error, e)
+
+    def _update_results(self, path_mtu: int, vpn_mtu: int) -> None:
+        self.path_mtu_var.set(str(path_mtu))
+        self.vpn_mtu_var.set(str(vpn_mtu))
+        self.status_var.set("Done.")
+
+    def _show_error(self, err: Exception) -> None:
+        self.status_var.set("Error.")
+        messagebox.showerror("Error", str(err))
 
 def main():
     if not is_windows():
